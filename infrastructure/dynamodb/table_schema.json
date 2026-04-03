@@ -1,0 +1,131 @@
+{
+  "Tables": [
+    {
+      "TableName": "tickets",
+      "BillingMode": "PAY_PER_REQUEST",
+      "AttributeDefinitions": [
+        {
+          "AttributeName": "id",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "user_id",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "created_at",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "status",
+          "AttributeType": "S"
+        }
+      ],
+      "KeySchema": [
+        {
+          "AttributeName": "id",
+          "KeyType": "HASH"
+        }
+      ],
+      "GlobalSecondaryIndexes": [
+        {
+          "IndexName": "user_id-created_at-index",
+          "KeySchema": [
+            {
+              "AttributeName": "user_id",
+              "KeyType": "HASH"
+            },
+            {
+              "AttributeName": "created_at",
+              "KeyType": "RANGE"
+            }
+          ],
+          "Projection": {
+            "ProjectionType": "ALL"
+          }
+        },
+        {
+          "IndexName": "status-created_at-index",
+          "KeySchema": [
+            {
+              "AttributeName": "status",
+              "KeyType": "HASH"
+            },
+            {
+              "AttributeName": "created_at",
+              "KeyType": "RANGE"
+            }
+          ],
+          "Projection": {
+            "ProjectionType": "ALL"
+          }
+        }
+      ],
+      "SSESpecification": {
+        "SSEEnabled": true
+      },
+      "PointInTimeRecoverySpecification": {
+        "PointInTimeRecoveryEnabled": true
+      }
+    },
+    {
+      "TableName": "users",
+      "BillingMode": "PAY_PER_REQUEST",
+      "AttributeDefinitions": [
+        {
+          "AttributeName": "id",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "email",
+          "AttributeType": "S"
+        }
+      ],
+      "KeySchema": [
+        {
+          "AttributeName": "id",
+          "KeyType": "HASH"
+        }
+      ],
+      "GlobalSecondaryIndexes": [
+        {
+          "IndexName": "email-index",
+          "KeySchema": [
+            {
+              "AttributeName": "email",
+              "KeyType": "HASH"
+            }
+          ],
+          "Projection": {
+            "ProjectionType": "ALL"
+          }
+        }
+      ],
+      "SSESpecification": {
+        "SSEEnabled": true
+      }
+    }
+  ],
+  "TicketSchema": {
+    "id": "UUID string",
+    "user_id": "UUID string - reference to user",
+    "description": "String - ticket description",
+    "user_priority": "Enum: low, medium, high, critical",
+    "ai_priority": "Enum: low, medium, high, critical - set by AI",
+    "category": "Enum: technical, billing, security, general, feature_request, bug, account",
+    "risk_level": "Enum: none, low, medium, high, critical",
+    "sensitive_data_detected": "Boolean",
+    "sensitive_data_types": "Array of strings",
+    "status": "Enum: pending_analysis, analyzed, in_progress, resolved, closed",
+    "created_at": "ISO 8601 timestamp",
+    "updated_at": "ISO 8601 timestamp"
+  },
+  "UserSchema": {
+    "id": "UUID string",
+    "email": "String - unique email",
+    "password_hash": "String - hashed password",
+    "name": "String - user's name",
+    "created_at": "ISO 8601 timestamp",
+    "updated_at": "ISO 8601 timestamp"
+  }
+}

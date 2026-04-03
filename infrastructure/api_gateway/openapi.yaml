@@ -1,0 +1,378 @@
+openapi: 3.0.3
+info:
+  title: Ticket Management API
+  description: Serverless API for ticket management with AI-powered analysis
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: https://{api_id}.execute-api.{region}.amazonaws.com/{stage}
+    variables:
+      api_id:
+        default: your-api-id
+      region:
+        default: us-east-1
+      stage:
+        default: prod
+
+security:
+  - BearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      description: Create a new user account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - name
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: SecurePass123
+                name:
+                  type: string
+                  minLength: 1
+                  example: John Doe
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      summary: User login
+      description: Authenticate user and return JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: SecurePass123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tickets:
+    post:
+      summary: Create a new ticket
+      description: Create a ticket and trigger AI analysis workflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTicketRequest'
+      responses:
+        '201':
+          description: Ticket created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      summary: List tickets
+      description: Get all tickets for the authenticated user
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending_analysis
+              - analyzed
+              - in_progress
+              - resolved
+              - closed
+        - name: last_key
+          in: query
+          description: Pagination token from previous response
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of tickets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tickets/{id}:
+    get:
+      summary: Get ticket details
+      description: Get a specific ticket by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Ticket details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - not your ticket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ticket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            token:
+              type: string
+              description: JWT authentication token
+
+    CreateTicketRequest:
+      type: object
+      required:
+        - description
+      properties:
+        description:
+          type: string
+          minLength: 10
+          maxLength: 5000
+          example: My application crashes when I try to upload files larger than 10MB
+        user_priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+            - critical
+          default: medium
+          example: high
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        user_priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+            - critical
+        ai_priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+            - critical
+          nullable: true
+        category:
+          type: string
+          enum:
+            - technical
+            - billing
+            - security
+            - general
+            - feature_request
+            - bug
+            - account
+          nullable: true
+        risk_level:
+          type: string
+          enum:
+            - none
+            - low
+            - medium
+            - high
+            - critical
+          nullable: true
+        sensitive_data_detected:
+          type: boolean
+        sensitive_data_types:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum:
+            - pending_analysis
+            - analyzed
+            - in_progress
+            - resolved
+            - closed
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TicketResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            ticket:
+              $ref: '#/components/schemas/Ticket'
+            message:
+              type: string
+
+    TicketListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            tickets:
+              type: array
+              items:
+                $ref: '#/components/schemas/Ticket'
+            count:
+              type: integer
+            pagination:
+              type: object
+              properties:
+                last_key:
+                  type: string
+                has_more:
+                  type: boolean
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: Error message here

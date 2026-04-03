@@ -1,0 +1,95 @@
+{
+  "Comment": "Step Functions workflow for ticket analysis and notification",
+  "StartAt": "AnalyzeTicket",
+  "States": {
+    "AnalyzeTicket": {
+      "Type": "Task",
+      "Resource": "${ANALYZE_TICKET_LAMBDA_ARN}",
+      "TimeoutSeconds": 60,
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleAnalysisError"
+        }
+      ],
+      "Next": "UpdateTicket"
+    },
+    "UpdateTicket": {
+      "Type": "Task",
+      "Resource": "${UPDATE_TICKET_LAMBDA_ARN}",
+      "TimeoutSeconds": 30,
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "CheckNotificationRequired"
+    },
+    "CheckNotificationRequired": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.needs_notification",
+          "BooleanEquals": true,
+          "Next": "SendNotification"
+        }
+      ],
+      "Default": "WorkflowComplete"
+    },
+    "SendNotification": {
+      "Type": "Task",
+      "Resource": "${SEND_NOTIFICATION_LAMBDA_ARN}",
+      "TimeoutSeconds": 30,
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.notification_error",
+          "Next": "WorkflowComplete"
+        }
+      ],
+      "Next": "WorkflowComplete"
+    },
+    "HandleAnalysisError": {
+      "Type": "Pass",
+      "Result": {
+        "ticket_id.$": "$.ticket_id",
+        "analysis": {
+          "category": "general",
+          "ai_priority": "$.user_priority",
+          "risk_level": "none",
+          "sensitive_data_detected": false,
+          "sensitive_data_types": [],
+          "summary": "Analysis failed - manual review required",
+          "confidence_score": 0
+        },
+        "needs_notification": false,
+        "error.$": "$.error"
+      },
+      "Next": "UpdateTicket"
+    },
+    "WorkflowComplete": {
+      "Type": "Succeed",
+      "Comment": "Ticket workflow completed successfully"
+    }
+  }
+}

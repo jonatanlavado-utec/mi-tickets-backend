@@ -1,0 +1,533 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Ticket Management System - Serverless Backend with AI Analysis'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  GroqApiKey:
+    Type: String
+    NoEcho: true
+    Description: Groq API Key for AI analysis
+
+  SendGridApiKey:
+    Type: String
+    NoEcho: true
+    Description: SendGrid API Key for email notifications
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: Secret key for JWT token signing
+
+  AdminEmail:
+    Type: String
+    Default: admin@example.com
+    Description: Admin email for notifications
+
+  SenderEmail:
+    Type: String
+    Default: noreply@example.com
+    Description: Sender email address
+
+Resources:
+  # ============================================================
+  # DynamoDB Tables
+  # ============================================================
+
+  TicketsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'tickets-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_id-created_at-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'users-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+
+  # ============================================================
+  # IAM Roles (using LabRole for student accounts)
+  # ============================================================
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'ticket-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt TicketsTable.Arn
+                  - !GetAtt UsersTable.Arn
+                  - !Sub '${TicketsTable.Arn}/index/*'
+                  - !Sub '${UsersTable.Arn}/index/*'
+        - PolicyName: StepFunctionsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: !Ref TicketWorkflowStateMachine
+        - PolicyName: SecretsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: '*'
+
+  StepFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'ticket-stepfunctions-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaInvoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt AnalyzeTicketLambda.Arn
+                  - !GetAtt UpdateTicketLambda.Arn
+                  - !GetAtt SendNotificationLambda.Arn
+
+  # ============================================================
+  # Lambda Functions
+  # ============================================================
+
+  RegisterLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'auth-register-${Environment}'
+      Runtime: python3.11
+      Handler: register.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_USERS: !Ref UsersTable
+          DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
+          JWT_SECRET: !Ref JwtSecret
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Lambda code will be deployed separately
+
+  LoginLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'auth-login-${Environment}'
+      Runtime: python3.11
+      Handler: login.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_USERS: !Ref UsersTable
+          DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
+          JWT_SECRET: !Ref JwtSecret
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Lambda code will be deployed separately
+
+  CreateTicketLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'tickets-create-${Environment}'
+      Runtime: python3.11
+      Handler: create_ticket.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
+          DYNAMODB_TABLE_USERS: !Ref UsersTable
+          JWT_SECRET: !Ref JwtSecret
+          STEP_FUNCTION_ARN: !Ref TicketWorkflowStateMachine
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Lambda code will be deployed separately
+
+  GetTicketLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'tickets-get-${Environment}'
+      Runtime: python3.11
+      Handler: get_ticket.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
+          JWT_SECRET: !Ref JwtSecret
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Lambda code will be deployed separately
+
+  ListTicketsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'tickets-list-${Environment}'
+      Runtime: python3.11
+      Handler: list_tickets.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
+          JWT_SECRET: !Ref JwtSecret
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Lambda code will be deployed separately
+
+  AnalyzeTicketLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'workflow-analyze-${Environment}'
+      Runtime: python3.11
+      Handler: analyze_ticket.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          GROQ_API_KEY: !Ref GroqApiKey
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Lambda code will be deployed separately
+
+  UpdateTicketLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'workflow-update-${Environment}'
+      Runtime: python3.11
+      Handler: update_ticket.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Lambda code will be deployed separately
+
+  SendNotificationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'workflow-notify-${Environment}'
+      Runtime: python3.11
+      Handler: send_notification.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          SENDGRID_API_KEY: !Ref SendGridApiKey
+          SENDGRID_SENDER_EMAIL: !Ref SenderEmail
+          ADMIN_EMAIL: !Ref AdminEmail
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Lambda code will be deployed separately
+
+  ReportGeneratorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'scheduled-reports-${Environment}'
+      Runtime: python3.11
+      Handler: generate_reports.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
+          SENDGRID_API_KEY: !Ref SendGridApiKey
+          SENDGRID_SENDER_EMAIL: !Ref SenderEmail
+          ADMIN_EMAIL: !Ref AdminEmail
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Lambda code will be deployed separately
+
+  # ============================================================
+  # Step Functions State Machine
+  # ============================================================
+
+  TicketWorkflowStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub 'ticket-workflow-${Environment}'
+      RoleArn: !GetAtt StepFunctionsRole.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "Ticket Analysis Workflow",
+          "StartAt": "AnalyzeTicket",
+          "States": {
+            "AnalyzeTicket": {
+              "Type": "Task",
+              "Resource": "${AnalyzeTicketLambda.Arn}",
+              "TimeoutSeconds": 60,
+              "Retry": [{
+                "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2
+              }],
+              "Catch": [{
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.error",
+                "Next": "HandleAnalysisError"
+              }],
+              "Next": "UpdateTicket"
+            },
+            "UpdateTicket": {
+              "Type": "Task",
+              "Resource": "${UpdateTicketLambda.Arn}",
+              "TimeoutSeconds": 30,
+              "Next": "CheckNotificationRequired"
+            },
+            "CheckNotificationRequired": {
+              "Type": "Choice",
+              "Choices": [{
+                "Variable": "$.needs_notification",
+                "BooleanEquals": true,
+                "Next": "SendNotification"
+              }],
+              "Default": "WorkflowComplete"
+            },
+            "SendNotification": {
+              "Type": "Task",
+              "Resource": "${SendNotificationLambda.Arn}",
+              "TimeoutSeconds": 30,
+              "Next": "WorkflowComplete"
+            },
+            "HandleAnalysisError": {
+              "Type": "Pass",
+              "Result": {
+                "ticket_id.$": "$.ticket_id",
+                "analysis": {
+                  "category": "general",
+                  "ai_priority": "medium",
+                  "risk_level": "none",
+                  "sensitive_data_detected": false
+                },
+                "needs_notification": false
+              },
+              "Next": "UpdateTicket"
+            },
+            "WorkflowComplete": {
+              "Type": "Succeed"
+            }
+          }
+        }
+
+  # ============================================================
+  # API Gateway
+  # ============================================================
+
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'ticket-api-${Environment}'
+      Description: Ticket Management API
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  ApiGatewayResourceAuth:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: 'auth'
+
+  ApiGatewayResourceAuthRegister:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceAuth
+      PathPart: 'register'
+
+  ApiGatewayResourceAuthLogin:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceAuth
+      PathPart: 'login'
+
+  ApiGatewayResourceTickets:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: 'tickets'
+
+  ApiGatewayResourceTicketId:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceTickets
+      PathPart: '{id}'
+
+  # API Methods and Integrations would be defined here
+  # (abbreviated for brevity - full implementation requires more resources)
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - RegisterLambda
+      - LoginLambda
+      - CreateTicketLambda
+    Properties:
+      RestApiId: !Ref ApiGateway
+
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: !Ref Environment
+      RestApiId: !Ref ApiGateway
+      DeploymentId: !Ref ApiGatewayDeployment
+
+  # ============================================================
+  # EventBridge Rules (Scheduled Reports)
+  # ============================================================
+
+  WeeklyReportRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'weekly-report-${Environment}'
+      Description: Generate weekly ticket reports
+      ScheduleExpression: 'cron(0 9 ? * MON *)'
+      Targets:
+        - Id: ReportGenerator
+          Arn: !GetAtt ReportGeneratorLambda.Arn
+          Input: '{"report_type": "weekly"}'
+
+  MonthlyReportRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'monthly-report-${Environment}'
+      Description: Generate monthly ticket reports
+      ScheduleExpression: 'cron(0 9 1 * ? *)'
+      Targets:
+        - Id: ReportGenerator
+          Arn: !GetAtt ReportGeneratorLambda.Arn
+          Input: '{"report_type": "monthly"}'
+
+  # Lambda Permissions for EventBridge
+  ReportGeneratorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ReportGeneratorLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn:
+        - !GetAtt WeeklyReportRule.Arn
+        - !GetAtt MonthlyReportRule.Arn
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+
+  TicketsTableName:
+    Description: DynamoDB Tickets table name
+    Value: !Ref TicketsTable
+
+  UsersTableName:
+    Description: DynamoDB Users table name
+    Value: !Ref UsersTable
+
+  StateMachineArn:
+    Description: Step Functions state machine ARN
+    Value: !Ref TicketWorkflowStateMachine
