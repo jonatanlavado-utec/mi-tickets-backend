@@ -80,7 +80,7 @@ Resources:
           AttributeType: S
         - AttributeName: email
           AttributeType: S
-      KeySchema:
+        KeySchema:
         - AttributeName: id
           KeyType: HASH
       GlobalSecondaryIndexes:
@@ -94,7 +94,7 @@ Resources:
         SSEEnabled: true
 
   # ============================================================
-  # IAM Roles (using LabRole for student accounts)
+  # IAM Roles (Base Roles without Circular References)
   # ============================================================
 
   LambdaExecutionRole:
@@ -127,14 +127,6 @@ Resources:
                   - !GetAtt UsersTable.Arn
                   - !Sub '${TicketsTable.Arn}/index/*'
                   - !Sub '${UsersTable.Arn}/index/*'
-        - PolicyName: StepFunctionsAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - states:StartExecution
-                Resource: !Ref TicketWorkflowStateMachine
         - PolicyName: SecretsAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -155,18 +147,6 @@ Resources:
             Principal:
               Service: states.amazonaws.com
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: LambdaInvoke
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource:
-                  - !GetAtt AnalyzeTicketLambda.Arn
-                  - !GetAtt UpdateTicketLambda.Arn
-                  - !GetAtt SendNotificationLambda.Arn
 
   # ============================================================
   # Lambda Functions
@@ -224,7 +204,7 @@ Resources:
           DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
           DYNAMODB_TABLE_USERS: !Ref UsersTable
           JWT_SECRET: !Ref JwtSecret
-          STEP_FUNCTION_ARN: !Ref TicketWorkflowStateMachine
+          STEP_FUNCTION_ARN: !GetAtt TicketWorkflowStateMachine.Arn
           AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
@@ -412,6 +392,41 @@ Resources:
         }
 
   # ============================================================
+  # IAM Policies (Attached AFTER resources exist to break loops)
+  # ============================================================
+
+  StepFunctionsInvokePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: InvokeStepFunctionsPolicy
+      Roles:
+        - !Ref LambdaExecutionRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource: !Ref TicketWorkflowStateMachine
+
+  LambdaInvokePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: InvokeLambdasPolicy
+      Roles:
+        - !Ref StepFunctionsRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource:
+              - !GetAtt AnalyzeTicketLambda.Arn
+              - !GetAtt UpdateTicketLambda.Arn
+              - !GetAtt SendNotificationLambda.Arn
+
+  # ============================================================
   # API Gateway
   # ============================================================
 
@@ -459,9 +474,6 @@ Resources:
       ParentId: !Ref ApiGatewayResourceTickets
       PathPart: '{id}'
 
-  # API Methods and Integrations would be defined here
-  # (abbreviated for brevity - full implementation requires more resources)
-
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -504,16 +516,22 @@ Resources:
           Arn: !GetAtt ReportGeneratorLambda.Arn
           Input: '{"report_type": "monthly"}'
 
-  # Lambda Permissions for EventBridge
-  ReportGeneratorPermission:
+  # Split into two separate permissions (SourceArn only takes a single string)
+  WeeklyReportGeneratorPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref ReportGeneratorLambda
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
-      SourceArn:
-        - !GetAtt WeeklyReportRule.Arn
-        - !GetAtt MonthlyReportRule.Arn
+      SourceArn: !GetAtt WeeklyReportRule.Arn
+
+  MonthlyReportGeneratorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ReportGeneratorLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MonthlyReportRule.Arn
 
 Outputs:
   ApiEndpoint:
