@@ -482,7 +482,7 @@ export SENDER_EMAIL=noreply@yourdomain.com
 ### Deploy Steps
 ```bash
 # 1. Clone repository
-git clone <repo-url>
+git clone git@github.com:jonatanlavado-utec/mi-tickets-backend.git
 cd ticket-ya-backend
 
 # 2. Install dependencies
