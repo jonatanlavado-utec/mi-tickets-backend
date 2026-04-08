@@ -69,6 +69,9 @@ for dir in "${LAMBDA_DIRS[@]}"; do
     cp -r shared "${temp_dir}/" 2>/dev/null || true
     cp -r config "${temp_dir}/" 2>/dev/null || true
 
+    # Install Python dependencies into the package
+    pip install -r requirements.txt -t "${temp_dir}" > /dev/null
+
     # Create zip file
     (cd "${temp_dir}" && zip -r "${function_name}.zip" .) > /dev/null
 
@@ -98,39 +101,26 @@ if [ "$STACK_STATUS" == "ROLLBACK_COMPLETE" ]; then
     aws cloudformation wait stack-delete-complete --stack-name "${STACK_NAME}" --region "${REGION}"
     
     echo -e "${GREEN}✅ Failed stack deleted. Proceeding with fresh deployment...${NC}"
-    STACK_STATUS="DOES_NOT_EXIST"
 fi
 
-# Determine if we need to create or update
-if [ "$STACK_STATUS" == "DOES_NOT_EXIST" ]; then
-    CREATE_UPDATE="create-stack"
-    echo "Creating new stack..."
-else
-    CREATE_UPDATE="update-stack"
-    echo "Updating existing stack..."
-fi
-
-# Execute the CloudFormation deployment
-aws cloudformation ${CREATE_UPDATE} \
+aws cloudformation deploy \
     --stack-name "${STACK_NAME}" \
-    --template-body file://infrastructure/cloudformation/template.yaml \
-    --parameters \
-        ParameterKey=Environment,ParameterValue="${ENVIRONMENT}" \
-        ParameterKey=GroqApiKey,ParameterValue="${GROQ_API_KEY:-placeholder}" \
-        ParameterKey=SendGridApiKey,ParameterValue="${SENDGRID_API_KEY:-placeholder}" \
-        ParameterKey=JwtSecret,ParameterValue="${JWT_SECRET:-change-me-in-production}" \
-        ParameterKey=AdminEmail,ParameterValue="${ADMIN_EMAIL:-admin@example.com}" \
-        ParameterKey=SenderEmail,ParameterValue="${SENDER_EMAIL:-noreply@example.com}" \
+    --template-file infrastructure/cloudformation/template.yaml \
+    --parameter-overrides \
+        Environment="${ENVIRONMENT}" \
+        GroqApiKey="${GROQ_API_KEY:-placeholder}" \
+        SendGridApiKey="${SENDGRID_API_KEY:-placeholder}" \
+        JwtSecret="${JWT_SECRET:-change-me-in-production}" \
+        AdminEmail="${ADMIN_EMAIL:-admin@example.com}" \
+        SenderEmail="${SENDER_EMAIL:-noreply@example.com}" \
     --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
     --region "${REGION}"
 
 # ================================================================
-# Step 4: Wait for Stack Completion
+# Step 4: Stack deployment complete
 # ================================================================
-echo -e "${YELLOW}[4/7] Waiting for stack to complete...${NC}"
-aws cloudformation wait stack-${CREATE_UPDATE%%-stack}-complete \
-    --stack-name "${STACK_NAME}" \
-    --region "${REGION}"
+echo -e "${YELLOW}[4/7] CloudFormation deploy complete.${NC}"
+
 
 # ================================================================
 # Step 5: Get Stack Outputs
