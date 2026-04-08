@@ -30,7 +30,7 @@ echo ""
 # ================================================================
 # Step 1: Create S3 Bucket (if not exists)
 # ================================================================
-echo -e "${YELLOW}[1/7] Checking S3 bucket...${NC}"  # Updated step count
+echo -e "${YELLOW}[1/7] Checking S3 bucket...${NC}"
 if aws s3 ls "s3://${BUCKET_NAME}" 2>&1 | grep -q 'NoSuchBucket'; then
     echo "Creating S3 bucket: ${BUCKET_NAME}"
     aws s3 mb "s3://${BUCKET_NAME}" --region "${REGION}"
@@ -41,7 +41,7 @@ fi
 # ================================================================
 # Step 2: Package Lambda Functions
 # ================================================================
-echo -e "${YELLOW}[2/7] Packaging Lambda functions...${NC}"  # Updated step count
+echo -e "${YELLOW}[2/7] Packaging Lambda functions...${NC}"
 
 LAMBDA_DIRS=(
     "lambdas/auth/register"
@@ -84,12 +84,12 @@ echo -e "${GREEN}Lambda functions packaged${NC}"
 # ================================================================
 # Step 3: Deploy CloudFormation Stack
 # ================================================================
-echo -e "${YELLOW}[3/7] Deploying CloudFormation stack...${NC}"  # Updated step count
+echo -e "${YELLOW}[3/7] Deploying CloudFormation stack...${NC}"
 
-# ✅ ADDED: Safely get the stack status (avoids script crash if it doesn't exist)
+# Safely get the stack status (avoids script crash if it doesn't exist)
 STACK_STATUS=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --region "${REGION}" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "DOES_NOT_EXIST")
 
-# ✅ ADDED: Automatically delete the stack if it's trapped in a rollback state
+# Automatically delete the stack if it's trapped in a rollback state
 if [ "$STACK_STATUS" == "ROLLBACK_COMPLETE" ]; then
     echo -e "${RED}⚠️ Stack is in ROLLBACK_COMPLETE state. Deleting failed stack...${NC}"
     aws cloudformation delete-stack --stack-name "${STACK_NAME}" --region "${REGION}"
@@ -127,7 +127,7 @@ aws cloudformation ${CREATE_UPDATE} \
 # ================================================================
 # Step 4: Wait for Stack Completion
 # ================================================================
-echo -e "${YELLOW}[4/7] Waiting for stack to complete...${NC}"  # Updated step count
+echo -e "${YELLOW}[4/7] Waiting for stack to complete...${NC}"
 aws cloudformation wait stack-${CREATE_UPDATE%%-stack}-complete \
     --stack-name "${STACK_NAME}" \
     --region "${REGION}"
@@ -135,7 +135,7 @@ aws cloudformation wait stack-${CREATE_UPDATE%%-stack}-complete \
 # ================================================================
 # Step 5: Get Stack Outputs
 # ================================================================
-echo -e "${YELLOW}[5/7] Getting stack outputs...${NC}"  # Updated step count
+echo -e "${YELLOW}[5/7] Getting stack outputs...${NC}"
 
 API_ENDPOINT=$(aws cloudformation describe-stacks \
     --stack-name "${STACK_NAME}" \
@@ -148,17 +148,15 @@ echo -e "${GREEN}API Endpoint: ${API_ENDPOINT}${NC}"
 # ================================================================
 # Step 6: Update Lambda Code
 # ================================================================
-echo -e "${YELLOW}[6/7] Updating Lambda code...${NC}"  # Updated step count
+echo -e "${YELLOW}[6/7] Updating Lambda code...${NC}"
 
 for dir in "${LAMBDA_DIRS[@]}"; do
     function_name=$(basename "$dir")
-    lambda_name=$(echo "${function_name}" | sed 's/_/-/g')
 
-    echo "Updating: ${lambda_name}-${ENVIRONMENT}"  # Fixed: Removed extra variables from echo
+    echo "Updating: ${function_name}-${ENVIRONMENT}"
 
-    # Removed: > /dev/null 2>&1 || true to allow errors to surface
     aws lambda update-function-code \
-        --function-name "${lambda_name}-${ENVIRONMENT}" \
+        --function-name "${function_name}-${ENVIRONMENT}" \
         --s3-bucket "${BUCKET_NAME}" \
         --s3-key "${function_name}.zip" \
         --region "${REGION}"
@@ -171,22 +169,21 @@ echo -e "${YELLOW}[7/7] Validating Lambda code deployment...${NC}"
 
 for dir in "${LAMBDA_DIRS[@]}"; do
     function_name=$(basename "$dir")
-    lambda_name=$(echo "${function_name}" | sed 's/_/-/g')
 
-    echo "Validating: ${lambda_name}-${ENVIRONMENT}"
+    echo "Validating: ${function_name}-${ENVIRONMENT}"
     
     # Get the LastModified timestamp to confirm the update
     LAST_MODIFIED=$(aws lambda get-function-configuration \
-        --function-name "${lambda_name}-${ENVIRONMENT}" \
+        --function-name "${function_name}-${ENVIRONMENT}" \
         --region "${REGION}" \
         --query 'LastModified' \
         --output text)
     
     if [ -z "$LAST_MODIFIED" ]; then
-        echo -e "${RED}❌ Validation failed: Could not retrieve info for ${lambda_name}-${ENVIRONMENT}${NC}"
+        echo -e "${RED}❌ Validation failed: Could not retrieve info for ${function_name}-${ENVIRONMENT}${NC}"
         exit 1
     else
-        echo -e "${GREEN}✅ ${lambda_name}-${ENVIRONMENT} updated at: ${LAST_MODIFIED}${NC}"
+        echo -e "${GREEN}✅ ${function_name}-${ENVIRONMENT} updated at: ${LAST_MODIFIED}${NC}"
     fi
 done
 

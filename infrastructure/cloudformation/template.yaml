@@ -94,62 +94,7 @@ Resources:
         SSEEnabled: true
 
   # ============================================================
-  # IAM Roles (Base Roles without Circular References)
-  # ============================================================
-
-  LambdaExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub 'ticket-lambda-role-${Environment}'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: DynamoDBAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - dynamodb:GetItem
-                  - dynamodb:PutItem
-                  - dynamodb:UpdateItem
-                  - dynamodb:Query
-                  - dynamodb:Scan
-                Resource:
-                  - !GetAtt TicketsTable.Arn
-                  - !GetAtt UsersTable.Arn
-                  - !Sub '${TicketsTable.Arn}/index/*'
-                  - !Sub '${UsersTable.Arn}/index/*'
-        - PolicyName: SecretsAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: '*'
-
-  StepFunctionsRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub 'ticket-stepfunctions-role-${Environment}'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: states.amazonaws.com
-            Action: sts:AssumeRole
-
-  # ============================================================
-  # Lambda Functions
+  # Lambda Functions (Using AWS Academy LabRole)
   # ============================================================
 
   RegisterLambda:
@@ -158,7 +103,7 @@ Resources:
       FunctionName: !Sub 'auth-register-${Environment}'
       Runtime: python3.11
       Handler: register.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       Timeout: 30
       MemorySize: 256
       Environment:
@@ -166,7 +111,6 @@ Resources:
           DYNAMODB_TABLE_USERS: !Ref UsersTable
           DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
           JWT_SECRET: !Ref JwtSecret
-          AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           # Lambda code will be deployed separately
@@ -177,7 +121,7 @@ Resources:
       FunctionName: !Sub 'auth-login-${Environment}'
       Runtime: python3.11
       Handler: login.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       Timeout: 30
       MemorySize: 256
       Environment:
@@ -185,7 +129,6 @@ Resources:
           DYNAMODB_TABLE_USERS: !Ref UsersTable
           DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
           JWT_SECRET: !Ref JwtSecret
-          AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           # Lambda code will be deployed separately
@@ -196,7 +139,7 @@ Resources:
       FunctionName: !Sub 'tickets-create-${Environment}'
       Runtime: python3.11
       Handler: create_ticket.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       Timeout: 30
       MemorySize: 256
       Environment:
@@ -205,7 +148,6 @@ Resources:
           DYNAMODB_TABLE_USERS: !Ref UsersTable
           JWT_SECRET: !Ref JwtSecret
           STEP_FUNCTION_ARN: !GetAtt TicketWorkflowStateMachine.Arn
-          AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           # Lambda code will be deployed separately
@@ -216,14 +158,13 @@ Resources:
       FunctionName: !Sub 'tickets-get-${Environment}'
       Runtime: python3.11
       Handler: get_ticket.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       Timeout: 30
       MemorySize: 128
       Environment:
         Variables:
           DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
           JWT_SECRET: !Ref JwtSecret
-          AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           # Lambda code will be deployed separately
@@ -234,14 +175,13 @@ Resources:
       FunctionName: !Sub 'tickets-list-${Environment}'
       Runtime: python3.11
       Handler: list_tickets.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       Timeout: 30
       MemorySize: 128
       Environment:
         Variables:
           DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
           JWT_SECRET: !Ref JwtSecret
-          AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           # Lambda code will be deployed separately
@@ -252,13 +192,12 @@ Resources:
       FunctionName: !Sub 'workflow-analyze-${Environment}'
       Runtime: python3.11
       Handler: analyze_ticket.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       Timeout: 60
       MemorySize: 512
       Environment:
         Variables:
           GROQ_API_KEY: !Ref GroqApiKey
-          AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           # Lambda code will be deployed separately
@@ -269,13 +208,12 @@ Resources:
       FunctionName: !Sub 'workflow-update-${Environment}'
       Runtime: python3.11
       Handler: update_ticket.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       Timeout: 30
       MemorySize: 128
       Environment:
         Variables:
           DYNAMODB_TABLE_TICKETS: !Ref TicketsTable
-          AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           # Lambda code will be deployed separately
@@ -286,7 +224,7 @@ Resources:
       FunctionName: !Sub 'workflow-notify-${Environment}'
       Runtime: python3.11
       Handler: send_notification.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       Timeout: 30
       MemorySize: 256
       Environment:
@@ -294,7 +232,6 @@ Resources:
           SENDGRID_API_KEY: !Ref SendGridApiKey
           SENDGRID_SENDER_EMAIL: !Ref SenderEmail
           ADMIN_EMAIL: !Ref AdminEmail
-          AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           # Lambda code will be deployed separately
@@ -305,7 +242,7 @@ Resources:
       FunctionName: !Sub 'scheduled-reports-${Environment}'
       Runtime: python3.11
       Handler: generate_reports.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       Timeout: 60
       MemorySize: 256
       Environment:
@@ -314,20 +251,19 @@ Resources:
           SENDGRID_API_KEY: !Ref SendGridApiKey
           SENDGRID_SENDER_EMAIL: !Ref SenderEmail
           ADMIN_EMAIL: !Ref AdminEmail
-          AWS_REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           # Lambda code will be deployed separately
 
   # ============================================================
-  # Step Functions State Machine
+  # Step Functions State Machine (Using AWS Academy LabRole)
   # ============================================================
 
   TicketWorkflowStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
       StateMachineName: !Sub 'ticket-workflow-${Environment}'
-      RoleArn: !GetAtt StepFunctionsRole.Arn
+      RoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
       DefinitionString: !Sub |
         {
           "Comment": "Ticket Analysis Workflow",
@@ -390,41 +326,6 @@ Resources:
             }
           }
         }
-
-  # ============================================================
-  # IAM Policies (Attached AFTER resources exist to break loops)
-  # ============================================================
-
-  StepFunctionsInvokePolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: InvokeStepFunctionsPolicy
-      Roles:
-        - !Ref LambdaExecutionRole
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Action:
-              - states:StartExecution
-            Resource: !Ref TicketWorkflowStateMachine
-
-  LambdaInvokePolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: InvokeLambdasPolicy
-      Roles:
-        - !Ref StepFunctionsRole
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Action:
-              - lambda:InvokeFunction
-            Resource:
-              - !GetAtt AnalyzeTicketLambda.Arn
-              - !GetAtt UpdateTicketLambda.Arn
-              - !GetAtt SendNotificationLambda.Arn
 
   # ============================================================
   # API Gateway
@@ -516,7 +417,6 @@ Resources:
           Arn: !GetAtt ReportGeneratorLambda.Arn
           Input: '{"report_type": "monthly"}'
 
-  # Split into two separate permissions (SourceArn only takes a single string)
   WeeklyReportGeneratorPermission:
     Type: AWS::Lambda::Permission
     Properties:
