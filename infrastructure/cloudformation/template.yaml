@@ -100,7 +100,7 @@ Resources:
   RegisterLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'auth-register-${Environment}'
+      FunctionName: !Sub 'register-${Environment}'
       Runtime: python3.11
       Handler: register.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
@@ -118,7 +118,7 @@ Resources:
   LoginLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'auth-login-${Environment}'
+      FunctionName: !Sub 'login-${Environment}'
       Runtime: python3.11
       Handler: login.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
@@ -136,7 +136,7 @@ Resources:
   CreateTicketLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'tickets-create-${Environment}'
+      FunctionName: !Sub 'create_ticket-${Environment}'
       Runtime: python3.11
       Handler: create_ticket.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
@@ -155,7 +155,7 @@ Resources:
   GetTicketLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'tickets-get-${Environment}'
+      FunctionName: !Sub 'get_ticket-${Environment}'
       Runtime: python3.11
       Handler: get_ticket.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
@@ -172,7 +172,7 @@ Resources:
   ListTicketsLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'tickets-list-${Environment}'
+      FunctionName: !Sub 'list_tickets-${Environment}'
       Runtime: python3.11
       Handler: list_tickets.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
@@ -189,7 +189,7 @@ Resources:
   AnalyzeTicketLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'workflow-analyze-${Environment}'
+      FunctionName: !Sub 'analyze_ticket-${Environment}'
       Runtime: python3.11
       Handler: analyze_ticket.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
@@ -205,7 +205,7 @@ Resources:
   UpdateTicketLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'workflow-update-${Environment}'
+      FunctionName: !Sub 'update_ticket-${Environment}'
       Runtime: python3.11
       Handler: update_ticket.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
@@ -221,7 +221,7 @@ Resources:
   SendNotificationLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'workflow-notify-${Environment}'
+      FunctionName: !Sub 'send_notification-${Environment}'
       Runtime: python3.11
       Handler: send_notification.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
@@ -239,7 +239,7 @@ Resources:
   ReportGeneratorLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'scheduled-reports-${Environment}'
+      FunctionName: !Sub 'generate_reports-${Environment}'
       Runtime: python3.11
       Handler: generate_reports.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
@@ -375,12 +375,120 @@ Resources:
       ParentId: !Ref ApiGatewayResourceTickets
       PathPart: '{id}'
 
+  # --- HTTP METHODS & LAMBDA INTEGRATIONS ---
+
+  ApiGatewayMethodAuthRegister:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceAuthRegister
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RegisterLambda.Arn}/invocations'
+
+  ApiGatewayMethodAuthLogin:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceAuthLogin
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LoginLambda.Arn}/invocations'
+
+  ApiGatewayMethodTicketsPost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceTickets
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateTicketLambda.Arn}/invocations'
+
+  ApiGatewayMethodTicketsGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceTickets
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListTicketsLambda.Arn}/invocations'
+
+  ApiGatewayMethodTicketIdGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceTicketId
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetTicketLambda.Arn}/invocations'
+
+  # --- API GATEWAY PERMISSIONS FOR LAMBDA ---
+
+  RegisterLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RegisterLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/auth/register'
+
+  LoginLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LoginLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/auth/login'
+
+  CreateTicketLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CreateTicketLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/tickets'
+
+  ListTicketsLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ListTicketsLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/GET/tickets'
+
+  GetTicketLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetTicketLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/GET/tickets/*'
+
+  # --- API DEPLOYMENT ---
+
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
-      - RegisterLambda
-      - LoginLambda
-      - CreateTicketLambda
+      - ApiGatewayMethodAuthRegister
+      - ApiGatewayMethodAuthLogin
+      - ApiGatewayMethodTicketsPost
+      - ApiGatewayMethodTicketsGet
+      - ApiGatewayMethodTicketIdGet
     Properties:
       RestApiId: !Ref ApiGateway
 

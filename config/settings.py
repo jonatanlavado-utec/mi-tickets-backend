@@ -18,17 +18,17 @@ class Settings:
     tickets_table: str
     users_table: str
 
+    # SendGrid Configuration
+    sendgrid_sender_email: str
+    admin_email: str
+
     # Authentication
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     jwt_expiration_hours: int = 24
 
-    # SendGrid Configuration
-    sendgrid_sender_email: str
-    admin_email: str
-
     # AWS Region
-    aws_region: str
+    aws_region: str = "us-east-1"
 
     @classmethod
     def from_env(cls) -> "Settings":
