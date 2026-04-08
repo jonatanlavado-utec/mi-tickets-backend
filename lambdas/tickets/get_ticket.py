@@ -5,6 +5,7 @@ GET /tickets/{id}
 from typing import Any, Dict
 
 from shared.response_utils import (
+    create_response,
     not_found_response,
     unauthorized_response,
     forbidden_response,
@@ -49,17 +50,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return forbidden_response("You do not have access to this ticket")
 
         # Return success
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-            "body": {
-                "success": True,
-                "data": {"ticket": ticket},
-            },
-        }
+        return create_response(200, {
+            "success": True,
+            "data": {"ticket": ticket},
+        })
 
     except Exception as e:
         print(f"Get ticket error: {str(e)}")
