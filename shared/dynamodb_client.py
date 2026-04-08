@@ -284,17 +284,19 @@ class UsersTable:
             "updated_at": now,
         }
 
-        self.table.put_item(
-            Item=user,
-            ConditionExpression="attribute_not_exists(email)",
-        )
+        self.table.put_item(Item=user)  # Removed ConditionExpression
         return user
 
     def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Get user by email."""
         try:
-            response = self.table.get_item(Key={"email": email.lower()})
-            return response.get("Item")
+            response = self.table.query(
+                IndexName="email-index",
+                KeyConditionExpression="email = :email",
+                ExpressionAttributeValues={":email": email.lower()},
+            )
+            items = response.get("Items", [])
+            return items[0] if items else None
         except ClientError:
             return None
 

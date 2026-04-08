@@ -84,8 +84,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Hash password
         password_hash = hash_password(password)
 
-        # Create user in DynamoDB
+        # Check if email already exists
         users_table = get_users_table()
+        existing_user = users_table.get_user_by_email(email.lower())
+        if existing_user:
+            return bad_request_response("Email already registered")
+
+        # Create user in DynamoDB
         user = users_table.create_user(
             email=email,
             password_hash=password_hash,
@@ -110,11 +115,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         })
 
     except ClientError as e:
-        error_code = e.response.get("Error", {}).get("Code", "")
-
-        if error_code == "ConditionalCheckFailedException":
-            return bad_request_response("Email already registered")
-
         return internal_error_response("Failed to create user")
 
     except json.JSONDecodeError:
