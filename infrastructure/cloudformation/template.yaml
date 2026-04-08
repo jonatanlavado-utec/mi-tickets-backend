@@ -80,7 +80,7 @@ Resources:
           AttributeType: S
         - AttributeName: email
           AttributeType: S
-        KeySchema:
+      KeySchema:
         - AttributeName: id
           KeyType: HASH
       GlobalSecondaryIndexes:
