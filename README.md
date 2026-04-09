@@ -103,23 +103,77 @@ ticket-ya-backend/
 
 ## Environment Variables
 
-Set these in Lambda environment variables or AWS Secrets Manager:
+Create a `.env` file in the project root with the following variables:
 
 ```bash
-GROQ_API_KEY=your_groq_api_key
-SENDGRID_API_KEY=your_sendgrid_api_key
-DYNAMODB_TABLE_TICKETS=tickets
-DYNAMODB_TABLE_USERS=users
-JWT_SECRET=your_jwt_secret
-SENDGRID_SENDER_EMAIL=noreply@yourdomain.com
+# AWS Configuration
+AWS_REGION=us-east-1
+ENVIRONMENT=dev
+
+# API Keys
+GROQ_API_KEY=your_groq_api_key_here
+SENDGRID_API_KEY=your_sendgrid_api_key_here
+
+# Authentication
+JWT_SECRET=your_random_secret_here
+JWT_EXPIRATION_HOURS=24
+
+# Email Configuration
 ADMIN_EMAIL=admin@yourdomain.com
+SENDER_EMAIL=noreply@yourdomain.com
+SENDGRID_SENDER_EMAIL=noreply@yourdomain.com
+
+# DynamoDB Tables
+DYNAMODB_TABLE_TICKETS=tickets-dev
+DYNAMODB_TABLE_USERS=users-dev
 ```
 
-## Quick Start
+## Deployment
 
-1. Deploy DynamoDB tables
-2. Create IAM roles for Lambda execution
-3. Deploy Lambda functions
-4. Configure API Gateway with Lambda integrations
-5. Deploy Step Functions state machine
-6. Set up EventBridge scheduled rules
+### Prerequisites
+
+1. **AWS Student Account** with LabRole permissions
+2. **API Keys** from Groq and SendGrid
+3. **Python 3.11** and pip installed locally
+
+### Steps
+
+1. **Clone the repository and navigate to the backend directory:**
+   ```bash
+   git clone <repository-url>
+   cd mi-tickets-backend
+   ```
+
+2. **Install Python dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Configure environment variables:**
+   - Copy `.env.example` to `.env` (if available) or create `.env` file
+   - Fill in your actual API keys and configuration values
+
+4. **Deploy to AWS:**
+   ```bash
+   bash scripts/deploy.sh
+   ```
+
+   The deployment script will:
+   - Validate required environment variables
+   - Package Lambda functions
+   - Deploy CloudFormation stack
+   - Update Lambda function code
+   - Validate deployment
+
+5. **Verify deployment:**
+   - Check CloudFormation stack status in AWS Console
+   - Test API endpoints using the provided API Gateway URL
+
+### Environment Variable Validation
+
+The deployment script automatically validates that all required environment variables are set before proceeding. If any are missing, it will display an error message and exit.
+
+Required variables:
+- `GROQ_API_KEY`
+- `SENDGRID_API_KEY`
+- `JWT_SECRET`
