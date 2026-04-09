@@ -199,7 +199,7 @@ def generate_email_html(ticket: Dict[str, Any], analysis: Dict[str, Any]) -> str
                     <strong>⚠️ Sensitive Data Detected</strong><br>
                     Types found: {', '.join(analysis.get('sensitive_data_types', []))}
                 </div>
-                ''') if analysis.get('sensitive_data_detected') else ''}
+                ''']) if analysis.get('sensitive_data_detected') else ''}
             </div>
 
             <div class="footer">

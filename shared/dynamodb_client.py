@@ -134,15 +134,16 @@ class TicketsTable:
         try:
             response = self.table.update_item(
                 Key={"id": ticket_id},
-                UpdateExpression="""
-                    SET ai_priority = :ai_priority,
-                        category = :category,
-                        risk_level = :risk_level,
-                        sensitive_data_detected = :sensitive,
-                        sensitive_data_types = :sensitive_types,
-                        status = :status,
-                        updated_at = :updated_at
-                """,
+                UpdateExpression=(
+                    "SET ai_priority = :ai_priority, "
+                    "category = :category, "
+                    "risk_level = :risk_level, "
+                    "sensitive_data_detected = :sensitive, "
+                    "sensitive_data_types = :sensitive_types, "
+                    "#st = :status, "
+                    "updated_at = :updated_at"
+                ),
+                ExpressionAttributeNames={"#st": "status"},
                 ExpressionAttributeValues={
                     ":ai_priority": ai_priority,
                     ":category": category,
@@ -155,7 +156,10 @@ class TicketsTable:
                 ReturnValues="ALL_NEW",
             )
             return response.get("Attributes")
-        except ClientError:
+        except ClientError as err:
+            print(
+                f"DynamoDB update_ticket_analysis failed for ticket_id={ticket_id}: {err}"
+            )
             return None
 
     def update_status(self, ticket_id: str, status: str) -> Optional[Dict[str, Any]]:

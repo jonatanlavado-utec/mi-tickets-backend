@@ -12,11 +12,44 @@ ENVIRONMENT="${ENVIRONMENT:-dev}"
 BUCKET_NAME="${S3_BUCKET:-ticket-lambda-deployments-${ENVIRONMENT}}"
 STACK_NAME="ticket-system-${ENVIRONMENT}"
 
+# Required secrets
+GROQ_API_KEY="${GROQ_API_KEY:-}"
+SENDGRID_API_KEY="${SENDGRID_API_KEY:-}"
+JWT_SECRET="${JWT_SECRET:-}"
+
+# Load .env from repository root if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ENV_FILE="${REPO_ROOT}/.env"
+if [ -f "${ENV_FILE}" ]; then
+    echo "Loading environment variables from ${ENV_FILE}"
+    set -o allexport
+    # shellcheck source=/dev/null
+    source "${ENV_FILE}"
+    set +o allexport
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+require_env_var() {
+    local name="$1"
+    local value="${!name:-}"
+
+    if [ -z "$value" ]; then
+        echo -e "${RED}ERROR: Required environment variable ${name} is not set.${NC}"
+        echo "       Please export ${name} before running this script."
+        echo "       Example: export ${name}=your_value"
+        exit 1
+    fi
+}
+
+require_env_var GROQ_API_KEY
+require_env_var SENDGRID_API_KEY
+require_env_var JWT_SECRET
 
 echo -e "${GREEN}================================================${NC}"
 echo -e "${GREEN}Ticket Management System Deployment${NC}"
@@ -108,9 +141,9 @@ aws cloudformation deploy \
     --template-file infrastructure/cloudformation/template.yaml \
     --parameter-overrides \
         Environment="${ENVIRONMENT}" \
-        GroqApiKey="${GROQ_API_KEY:-placeholder}" \
-        SendGridApiKey="${SENDGRID_API_KEY:-placeholder}" \
-        JwtSecret="${JWT_SECRET:-change-me-in-production}" \
+        GroqApiKey="${GROQ_API_KEY}" \
+        SendGridApiKey="${SENDGRID_API_KEY}" \
+        JwtSecret="${JWT_SECRET}" \
         AdminEmail="${ADMIN_EMAIL:-admin@example.com}" \
         SenderEmail="${SENDER_EMAIL:-noreply@example.com}" \
     --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
