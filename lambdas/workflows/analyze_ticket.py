@@ -3,8 +3,9 @@ Lambda handler for AI ticket analysis using Groq API.
 Part of Step Functions workflow.
 """
 import json
-import urllib.request
+import time
 import urllib.error
+import urllib.request
 from typing import Any, Dict
 
 from config.settings import get_settings
@@ -38,6 +39,8 @@ Consider:
 - Sensitive Data: Look for emails, phone numbers, SSN, credit cards, passwords, API keys, health info
 """
 
+MAX_RETRIES = 10
+RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 def call_groq_api(prompt: str, settings: Any) -> Dict[str, Any]:
     """
@@ -72,54 +75,71 @@ def call_groq_api(prompt: str, settings: Any) -> Dict[str, Any]:
         )
     }
 
-    try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
 
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = json.loads(response.read().decode("utf-8"))
+            with urllib.request.urlopen(req, timeout=30) as response:
+                result = json.loads(response.read().decode("utf-8"))
 
-            # Extract content from response
-            content = result.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+                # Extract content from response
+                content = result.get("choices", [{}])[0].get("message", {}).get("content", "{}")
 
-            # Parse JSON response
-            # Clean up potential markdown code blocks
-            content = content.strip()
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            content = content.strip()
+                # Parse JSON response
+                # Clean up potential markdown code blocks
+                content = content.strip()
+                if content.startswith("```"):
+                    content = content.split("```")[1]
+                    if content.startswith("json"):
+                        content = content[4:]
+                content = content.strip()
 
-            analysis = json.loads(content)
+                analysis = json.loads(content)
+
+                return {
+                    "success": True,
+                    "analysis": analysis,
+                }
+
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8") if e.fp else "Unknown error"
+            
+            if e.code in RETRY_STATUS_CODES and attempt < MAX_RETRIES:
+                sleep_seconds = min(2 ** (attempt - 1), 5)
+                time.sleep(sleep_seconds)
+                continue
 
             return {
-                "success": True,
-                "analysis": analysis,
+                "success": False,
+                "error": f"Groq API error: {e.code} - {error_body}",
             }
 
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode("utf-8") if e.fp else "Unknown error"
-        return {
-            "success": False,
-            "error": f"Groq API error: {e.code} - {error_body}",
-        }
+        except urllib.error.URLError as e:
+            if attempt < MAX_RETRIES:
+                sleep_seconds = min(2 ** (attempt - 1), 5)
+                time.sleep(sleep_seconds)
+                continue
 
-    except urllib.error.URLError as e:
-        return {
-            "success": False,
-            "error": f"Network error: {str(e)}",
-        }
+            return {
+                "success": False,
+                "error": f"Network error: {str(e)}",
+            }
 
-    except json.JSONDecodeError as e:
-        return {
-            "success": False,
-            "error": f"Failed to parse API response: {str(e)}",
-        }
+        except json.JSONDecodeError as e:
+            return {
+                "success": False,
+                "error": f"Failed to parse API response: {str(e)}",
+            }
+
+    return {
+        "success": False,
+        "error": "Exceeded maximum Groq API retry attempts",
+    }
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -177,7 +197,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
 
     except Exception as e:
-        print(f"Analysis error: {str(e)}")
         return {
             "ticket_id": event.get("ticket_id"),
             "error": str(e),
